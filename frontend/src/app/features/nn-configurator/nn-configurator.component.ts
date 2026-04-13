@@ -220,7 +220,7 @@ export class NnConfiguratorComponent implements OnChanges {
 
   setValue(key: string, value: unknown): void {
     const param = this.visibleParams().find((p) => p.key === key);
-    const parsed = param?.type === 'integer' ? parseInt(String(value), 10) : +value;
+    const parsed = param?.type === 'integer' ? parseInt(String(value), 10) : +(value as number);
     this.values.update((v) => ({ ...v, [key]: isNaN(parsed as number) ? value : parsed }));
     this.emit();
   }

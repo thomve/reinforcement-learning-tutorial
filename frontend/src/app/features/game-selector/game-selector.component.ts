@@ -57,8 +57,9 @@ import { EnvironmentDef } from '../../core/models/types';
       width: 100%;
 
       &:hover { border-color: var(--text-muted); }
-      &--active { border-color: var(--border-focus) !important; background: rgba(79,110,247,.08); }
     }
+
+    .env-item--active { border-color: var(--border-focus) !important; background: rgba(79,110,247,.08); }
 
     .env-item__top {
       align-items: center;

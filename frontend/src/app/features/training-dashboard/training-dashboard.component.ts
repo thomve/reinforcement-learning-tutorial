@@ -125,7 +125,7 @@ export class TrainingDashboardComponent {
     const req: CreateSessionRequest = {
       env: this.selectedEnvId,
       algorithm: this.selectedAlgorithmId as CreateSessionRequest['algorithm'],
-      nn_config: this.nnConfig as CreateSessionRequest['nn_config'],
+      nn_config: this.nnConfig as unknown as CreateSessionRequest['nn_config'],
       training: this.trainingConfig,
     };
     this.sessionService.startTraining(req);

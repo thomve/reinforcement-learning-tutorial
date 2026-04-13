@@ -1,9 +1,11 @@
 import {
   AfterViewInit,
+  ChangeDetectorRef,
   Component,
   ElementRef,
   inject,
   OnDestroy,
+  signal,
   ViewChild,
 } from '@angular/core';
 import { Subscription } from 'rxjs';
@@ -22,18 +24,15 @@ import { SessionService } from '../../core/services/session.service';
         <h3>Live Preview</h3>
       </div>
       <div class="canvas-container">
-        <canvas #gameCanvas></canvas>
-        @if (!hasFrame) {
-          <div class="placeholder">
-            <span class="text-muted">Waiting for first frame...</span>
-          </div>
-        }
+        <!-- Placeholder shown until first frame arrives -->
+        <div class="placeholder" [class.placeholder--hidden]="hasFrame()">
+          <span class="text-muted">Waiting for first frame...</span>
+        </div>
+        <canvas #gameCanvas [class.canvas--visible]="hasFrame()"></canvas>
       </div>
     </div>
   `,
   styles: [`
-    .renderer-card { }
-
     .canvas-container {
       background: #000;
       border-radius: var(--radius-sm);
@@ -45,8 +44,14 @@ import { SessionService } from '../../core/services/session.service';
 
     canvas {
       display: block;
-      width: 100%;
       height: auto;
+      opacity: 0;
+      transition: opacity 0.3s;
+      width: 100%;
+    }
+
+    .canvas--visible {
+      opacity: 1;
     }
 
     .placeholder {
@@ -54,8 +59,16 @@ import { SessionService } from '../../core/services/session.service';
       display: flex;
       height: 200px;
       justify-content: center;
+      left: 0;
       position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
+      right: 0;
+      top: 0;
+      transition: opacity 0.3s;
+    }
+
+    .placeholder--hidden {
+      opacity: 0;
+      pointer-events: none;
     }
   `],
 })
@@ -63,9 +76,10 @@ export class GameRendererComponent implements AfterViewInit, OnDestroy {
   @ViewChild('gameCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
 
   private sessionService = inject(SessionService);
+  private cdr = inject(ChangeDetectorRef);
   private sub?: Subscription;
 
-  hasFrame = false;
+  hasFrame = signal(false);
 
   ngAfterViewInit(): void {
     const canvas = this.canvasRef.nativeElement;
@@ -77,7 +91,11 @@ export class GameRendererComponent implements AfterViewInit, OnDestroy {
         canvas.width = img.naturalWidth;
         canvas.height = img.naturalHeight;
         ctx.drawImage(img, 0, 0);
-        this.hasFrame = true;
+        if (!this.hasFrame()) {
+          this.hasFrame.set(true);
+          // img.onload runs outside Angular's zone — trigger detection manually
+          this.cdr.detectChanges();
+        }
       };
       img.src = b64;
     });

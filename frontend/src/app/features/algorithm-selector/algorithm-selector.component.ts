@@ -48,8 +48,9 @@ import { AlgorithmDef } from '../../core/models/types';
       width: 100%;
 
       &:hover { border-color: var(--text-muted); }
-      &--active { border-color: var(--border-focus) !important; background: rgba(79,110,247,.08); }
     }
+
+    .alg-item--active { border-color: var(--border-focus) !important; background: rgba(79,110,247,.08); }
 
     .alg-item__name { display: block; font-weight: 600; font-size: 0.875rem; margin-bottom: 4px; }
     .alg-item__desc { font-size: 0.8125rem; line-height: 1.4; }

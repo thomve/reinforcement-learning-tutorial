@@ -18,12 +18,13 @@ export function createApp(
   app.use('/api/v1/sessions', createSessionsRouter(sessionManager));
   app.use('/api/v1', createMetaRouter());
 
-  // Serve Angular build in production
+  // Serve Angular build only when it exists (production)
   const angularDist = path.resolve(__dirname, '../../frontend/dist/frontend/browser');
-  app.use(express.static(angularDist));
-  app.get(/.*/, (_req, res) => {
-    res.sendFile(path.join(angularDist, 'index.html'));
-  });
+  const indexHtml = path.join(angularDist, 'index.html');
+  if (require('fs').existsSync(indexHtml)) {
+    app.use(express.static(angularDist));
+    app.get(/.*/, (_req, res) => res.sendFile(indexHtml));
+  }
 
   return app;
 }
