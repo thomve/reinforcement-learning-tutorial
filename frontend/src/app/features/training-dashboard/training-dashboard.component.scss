@@ -80,6 +80,37 @@
   width: 1px;
 }
 
+.dashboard__tabs {
+  align-items: center;
+  display: flex;
+  gap: 2px;
+  margin-left: 16px;
+}
+
+.tab-btn {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  gap: 6px;
+  padding: 5px 12px;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+
+  &:hover { color: var(--text-primary); background: var(--bg-elevated); }
+
+  &--active {
+    background: rgba(79, 110, 247, 0.12);
+    border-color: var(--border-focus);
+    color: var(--accent);
+  }
+}
+
 .dashboard__header-end {
   align-items: center;
   display: flex;
@@ -97,6 +128,15 @@
   letter-spacing: 0.06em;
   padding: 3px 8px;
   text-transform: uppercase;
+}
+
+// ── Algorithm overview panel ──────────────────────────────────────────────────
+.dashboard__panel {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 // ── Body grid ─────────────────────────────────────────────────────────────────

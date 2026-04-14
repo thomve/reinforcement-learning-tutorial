@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SessionService } from '../../core/services/session.service';
 import { GameSelectorComponent } from '../game-selector/game-selector.component';
@@ -9,6 +9,7 @@ import { RewardChartComponent } from '../reward-chart/reward-chart.component';
 import { LossChartComponent } from '../loss-chart/loss-chart.component';
 import { EpisodeStatsComponent } from '../episode-stats/episode-stats.component';
 import { GameRendererComponent } from '../game-renderer/game-renderer.component';
+import { AlgorithmOverviewComponent } from '../algorithm-overview/algorithm-overview.component';
 import { CreateSessionRequest } from '../../core/models/types';
 
 @Component({
@@ -24,6 +25,7 @@ import { CreateSessionRequest } from '../../core/models/types';
     LossChartComponent,
     EpisodeStatsComponent,
     GameRendererComponent,
+    AlgorithmOverviewComponent,
   ],
   template: `
     <div class="dashboard">
@@ -42,8 +44,34 @@ import { CreateSessionRequest } from '../../core/models/types';
           <span class="brand-name">RL <span class="brand-accent">Control</span></span>
         </div>
 
-        <!-- Live metrics — only shown once a session is running -->
-        @if (sessionService.currentEpisode() > 0) {
+        <!-- Panel tabs -->
+        <nav class="dashboard__tabs">
+          <button
+            class="tab-btn"
+            [class.tab-btn--active]="activePanel() === 'training'"
+            (click)="activePanel.set('training')"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Training
+          </button>
+          <button
+            class="tab-btn"
+            [class.tab-btn--active]="activePanel() === 'overview'"
+            (click)="activePanel.set('overview')"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Algorithms
+          </button>
+        </nav>
+
+        <!-- Live metrics — only shown once a session is running, only on training panel -->
+        @if (sessionService.currentEpisode() > 0 && activePanel() === 'training') {
           <div class="dashboard__live-metrics">
             <div class="live-metric">
               <span class="live-metric__label">Episode</span>
@@ -69,7 +97,15 @@ import { CreateSessionRequest } from '../../core/models/types';
         </div>
       </header>
 
-      <!-- ── Body ────────────────────────────────────────────── -->
+      <!-- ── Algorithm overview panel ───────────────────────── -->
+      @if (activePanel() === 'overview') {
+        <div class="dashboard__panel">
+          <app-algorithm-overview />
+        </div>
+      }
+
+      <!-- ── Training body ────────────────────────────────────── -->
+      @if (activePanel() === 'training') {
       <div class="dashboard__body">
 
         <!-- Left: config sidebar -->
@@ -109,12 +145,16 @@ import { CreateSessionRequest } from '../../core/models/types';
         </aside>
 
       </div>
+      }
+
     </div>
   `,
   styleUrl: './training-dashboard.component.scss',
 })
 export class TrainingDashboardComponent {
   sessionService = inject(SessionService);
+
+  activePanel = signal<'training' | 'overview'>('training');
 
   selectedEnvId = 'CartPole-v1';
   selectedAlgorithmId: string = 'dqn';
