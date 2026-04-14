@@ -23,12 +23,14 @@ const WINDOW = 200;
       <div class="card__header">
         <h3>Reward</h3>
       </div>
-      <canvas #chartCanvas></canvas>
+      <div class="chart-wrap">
+        <canvas #chartCanvas></canvas>
+      </div>
     </div>
   `,
   styles: [`
-    .chart-card { }
-    canvas { max-height: 200px; }
+    .chart-card { min-width: 0; }
+    .chart-wrap { height: 200px; position: relative; width: 100%; }
   `],
 })
 export class RewardChartComponent implements AfterViewInit, OnDestroy {

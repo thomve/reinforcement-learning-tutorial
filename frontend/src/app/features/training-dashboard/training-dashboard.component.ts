@@ -27,30 +27,52 @@ import { CreateSessionRequest } from '../../core/models/types';
   ],
   template: `
     <div class="dashboard">
-      <!-- Header -->
+
+      <!-- ── Header ──────────────────────────────────────────── -->
       <header class="dashboard__header">
         <div class="dashboard__brand">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="var(--accent)" stroke-width="1.5"/>
-            <path d="M8 12l3 3 5-5" stroke="var(--success)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <polygon points="12,2 22,20 2,20"
+              stroke="var(--accent)" stroke-width="1.5"
+              stroke-linejoin="round" fill="rgba(79,110,247,.12)"/>
+            <line x1="12" y1="9" x2="12" y2="14"
+              stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="12" cy="17" r="0.8" fill="var(--accent)"/>
           </svg>
-          <span>RL Tutorial</span>
+          <span class="brand-name">RL <span class="brand-accent">Control</span></span>
         </div>
-        <div class="dashboard__meta" *ngIf="sessionService.session()">
+
+        <!-- Live metrics — only shown once a session is running -->
+        @if (sessionService.currentEpisode() > 0) {
+          <div class="dashboard__live-metrics">
+            <div class="live-metric">
+              <span class="live-metric__label">Episode</span>
+              <span class="live-metric__value">{{ sessionService.currentEpisode() }}</span>
+            </div>
+            <div class="live-metric-sep"></div>
+            <div class="live-metric">
+              <span class="live-metric__label">Best</span>
+              <span class="live-metric__value live-metric__value--good">
+                {{ sessionService.bestReward() | number:'1.1-1' }}
+              </span>
+            </div>
+          </div>
+        }
+
+        <div class="dashboard__header-end">
+          @if (sessionService.device()) {
+            <span class="device-chip">{{ sessionService.device() }}</span>
+          }
           <span class="badge badge--{{ sessionService.status() }}">
             {{ sessionService.status() }}
-          </span>
-          <span class="text-muted text-mono" *ngIf="sessionService.device()">
-            {{ sessionService.device() }}
-          </span>
-          <span class="text-secondary" *ngIf="sessionService.currentEpisode() > 0">
-            Ep {{ sessionService.currentEpisode() }}
           </span>
         </div>
       </header>
 
-      <main class="dashboard__body">
-        <!-- Config panel -->
+      <!-- ── Body ────────────────────────────────────────────── -->
+      <div class="dashboard__body">
+
+        <!-- Left: config sidebar -->
         <aside class="dashboard__config" [class.dashboard__config--disabled]="isTraining()">
           <app-game-selector (envChanged)="onEnvChanged($event)" />
           <app-algorithm-selector
@@ -61,6 +83,7 @@ import { CreateSessionRequest } from '../../core/models/types';
             [algorithmId]="selectedAlgorithmId"
             (configChanged)="onNnConfigChanged($event)"
           />
+          <div class="config-spacer"></div>
           <app-control-panel
             [status]="sessionService.status()"
             (start)="onStart()"
@@ -71,16 +94,21 @@ import { CreateSessionRequest } from '../../core/models/types';
           />
         </aside>
 
-        <!-- Visualization panel -->
-        <section class="dashboard__viz">
+        <!-- Center: renderer + charts -->
+        <main class="dashboard__main">
           <app-game-renderer />
           <div class="dashboard__charts">
             <app-reward-chart />
             <app-loss-chart />
           </div>
+        </main>
+
+        <!-- Right: live HUD stats -->
+        <aside class="dashboard__hud">
           <app-episode-stats />
-        </section>
-      </main>
+        </aside>
+
+      </div>
     </div>
   `,
   styleUrl: './training-dashboard.component.scss',
