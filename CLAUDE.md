@@ -1,145 +1,99 @@
 # CLAUDE.md
 
-## Project overview
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Interactive full-stack application for exploring reinforcement learning algorithms through a live UI. Users select an environment and algorithm, configure hyperparameters, and watch training unfold in real time via live charts and a game preview stream.
-
-**Stack:**
-- **Frontend:** Angular 18 (standalone components, signals) + Chart.js — `frontend/`
-- **Backend:** Node.js + Express + WebSocket (`ws`) — `backend/`
-- **RL engine:** Python + PyTorch + Gymnasium — `python/`
-
----
-
-## Development
+## Commands
 
 ```bash
-# Install Node dependencies (both workspaces)
+# Install all dependencies (Node workspaces + Python)
 npm install
+pip install -r python/requirements.txt         # activate venv first
+pip install gymnasium[box2d]                   # only needed for LunarLander
 
-# Install Python dependencies
-pip install -r python/requirements.txt
+# Development (backend + frontend in parallel)
+npm run dev                                    # both servers
+npm run dev:backend                            # Node.js only  (ts-node-dev, hot-reload)
+npm run dev:frontend                           # Angular only  (ng serve --proxy)
 
-# Run backend + frontend in parallel
-npm run dev
+# Production build
+npm run build                                  # Angular → frontend/dist/, tsc → backend/dist/
+node backend/dist/index.js                     # serve production build
+
+# Backend TypeScript check / compile only
+cd backend && npx tsc --noEmit                 # type-check without emitting
 ```
 
-- Angular dev server: http://localhost:4200
-- Node.js HTTP API: http://localhost:3000
-- WebSocket server: ws://localhost:3001
+There are no test or lint scripts configured in this project.
 
-The Angular proxy (`frontend/proxy.conf.json`) forwards `/api` calls to the backend. The WebSocket connects directly to port 3001.
+## Architecture
 
----
+The app has three independent layers that communicate over well-defined interfaces.
 
-## Architecture & communication flow
+### Communication flow
 
 ```
-Angular (4200) ──REST──► Node.js (3000) ──spawn──► Python process
-               │                            │
-               │◄──WebSocket (3001)──────────┘
-               │   (JSON-Lines relayed live)
+Angular (4200) ──REST /api──► Node.js (3000) ──spawn──► Python subprocess
+               │                                   │
+               └◄──────── WebSocket (3001) ◄───────┘
+                          (JSON-Lines relayed live)
 ```
 
-1. The frontend POSTs to `/api/sessions` with a config payload.
-2. Node.js (`SessionManagerService`) spawns a Python subprocess, writes the JSON config to its stdin, and registers the session.
-3. Python (`main.py` → `Trainer`) emits **JSON-Lines** on stdout during training.
-4. Node.js relays every line to subscribed WebSocket clients.
-5. The frontend consumes the stream to update charts and the frame preview.
+1. Frontend POSTs to `/api/sessions` with a config object.
+2. `SessionManagerService` (Node) spawns a Python process, writes the JSON config as the first stdin line, and stores the `Session`.
+3. Python (`main.py` → `Trainer`) emits **JSON-Lines** on stdout throughout training.
+4. Node reads stdout line by line and broadcasts each parsed message to WebSocket clients subscribed to that session.
+5. Control commands (pause/resume/stop) flow back from Node to Python via stdin.
 
-**Control commands** (pause/resume/stop) flow back from Node.js to the Python process via stdin JSON-Lines.
+### Python RL engine (`python/`)
 
----
+- `main.py` — entry point: reads one JSON line from stdin, validates it with Pydantic (`utils/config_schema.py`), detects the torch device, then delegates to `Trainer`.
+- `training/trainer.py` — main training loop. Creates the Gymnasium env, instantiates the agent via `create_agent()`, runs episodes, and emits all protocol messages. Pause/stop control is handled by a background thread reading stdin.
+- `algorithms/<algo>/agent.py` — each algorithm extends `BaseAgent` (`algorithms/base_agent.py`). Must implement `select_action`, `store_transition`, `train_step`, `episode_end`, `get_metrics`.
+- `environments/registry.py` — environment metadata (obs dims, action space, solved threshold).
+- `utils/frame_encoder.py` — converts NumPy RGB arrays to base64 PNG strings for the `frame` event.
 
-## Key files
+### Node.js backend (`backend/src/`)
 
-| File | Role |
-|------|------|
-| `python/main.py` | Python entry point — reads config from stdin, emits `init_ack`, delegates to `Trainer` |
-| `python/training/trainer.py` | Main training loop — creates the Gymnasium env, instantiates the agent, emits `episode_end` / `frame` / `training_complete` events |
-| `python/utils/config_schema.py` | Pydantic config schema shared between all algorithms |
-| `backend/src/services/session-manager.service.ts` | Session lifecycle — spawn, control, status tracking |
-| `backend/src/services/python-process.service.ts` | Low-level Python subprocess wrapper (spawn, stdin/stdout piping, kill) |
-| `backend/src/services/websocket.service.ts` | WebSocket server — broadcast events to subscribed clients |
-| `backend/src/routes/meta.route.ts` | Static metadata for environments and algorithms (hyperparameter schemas) |
-| `frontend/src/app/core/services/session.service.ts` | Angular session state, REST calls, WebSocket subscription |
-| `frontend/src/app/features/control-panel/control-panel.component.ts` | Start/Pause/Resume/Stop/Reset UI |
+- `services/python-process.service.ts` — low-level subprocess wrapper. Spawns Python with `cwd=python/`, pipes stdin/stdout, auto-detects the venv Python executable (checks `.venv/` then `venv/` then PATH). Force-kills after a 5 s grace period on stop.
+- `services/session-manager.service.ts` — session lifecycle. Caps concurrent active sessions at 3. Maps `init_ack` / `episode_end` / `training_complete` / `status` / `error` Python events to session state updates.
+- `services/websocket.service.ts` — WebSocket server on a separate port. Clients subscribe by session ID; messages are broadcast per-session.
+- `routes/meta.route.ts` — static `/api/meta/environments` and `/api/meta/algorithms` endpoints. **This is the single source of truth for hyperparameter schemas** — frontend and Python both depend on the field names defined here.
 
----
+### Angular frontend (`frontend/src/app/`)
 
-## Python JSON-Lines protocol
+- Uses standalone components and Angular signals throughout (no NgModules).
+- `core/services/session.service.ts` — holds session state, issues REST calls, manages the WebSocket subscription, and exposes observables/signals consumed by feature components.
+- `features/control-panel/` — Start / Pause / Resume / Stop / Reset buttons driven purely by `SessionStatus`.
+- `features/episode-stats/` — live chart rendering (Chart.js) fed by `episode_end` WebSocket events.
+- Angular dev server proxies `/api` to `localhost:3000` via `frontend/proxy.conf.json`. WebSocket connects directly to port 3001.
 
-All messages are newline-delimited JSON objects on stdout.
+### JSON-Lines protocol (Python ↔ Node)
 
-| `type` | Direction | Description |
-|--------|-----------|-------------|
-| `init_ack` | Python → Node | Emitted on startup; includes `session_id` and `device` (cpu/cuda/mps) |
-| `status` | Python → Node | Status change: `{ status: "training" \| "paused" \| "stopped" }` |
-| `episode_end` | Python → Node | Per-episode metrics: `episode`, `reward`, `avg_reward`, `best_reward`, `steps`, `loss`, plus algorithm-specific metrics |
-| `frame` | Python → Node | Base64-encoded RGB frame: `{ episode, step, frame }` |
-| `training_complete` | Python → Node | Final summary: `total_episodes`, `best_reward` |
-| `error` | Python → Node | `{ message, fatal }` — fatal errors exit the process |
-| `pause` / `resume` / `stop` | Node → Python | Control commands written to stdin |
+| `type` | Direction | Key fields |
+|--------|-----------|------------|
+| `init_ack` | Python → Node | `session_id`, `device` |
+| `status` | Python → Node | `status`: `training` \| `paused` \| `stopped` |
+| `episode_end` | Python → Node | `episode`, `reward`, `avg_reward`, `best_reward`, `steps`, `loss` + algo-specific metrics |
+| `frame` | Python → Node | `episode`, `step`, `frame` (base64 PNG) |
+| `training_complete` | Python → Node | `total_episodes`, `best_reward` |
+| `error` | Python → Node | `message`, `fatal` |
+| `pause` / `resume` / `stop` | Node → Python | written to stdin |
 
----
+### Extending the project
 
-## Algorithms
+**New algorithm:**
+1. `python/algorithms/<algo>/agent.py` — implement `BaseAgent`.
+2. `python/training/trainer.py` — add a branch in `create_agent()`.
+3. `backend/src/routes/meta.route.ts` — add entry to `ALGORITHMS` with hyperparameter schema.
 
-Each algorithm lives in `python/algorithms/<algo>/agent.py` and extends `BaseAgent`.
+**New environment:**
+1. `python/environments/registry.py` — add entry.
+2. `backend/src/routes/meta.route.ts` — add entry to `ENVIRONMENTS`.
 
-| ID | Class | Notes |
-|----|-------|-------|
-| `dqn` | `DQNAgent` | Experience replay + target network |
-| `ppo` | `PPOAgent` | Clipped surrogate objective, GAE |
-| `reinforce` | `REINFORCEAgent` | Monte Carlo policy gradient |
-| `q_learning` | `QLearningAgent` | Tabular, requires state discretization (`n_bins`) |
+## Environment variables
 
-### Adding a new algorithm
-
-1. Create `python/algorithms/<algo>/agent.py` implementing `BaseAgent`.
-2. Add a `case` in `python/training/trainer.py → create_agent()`.
-3. Add metadata + hyperparameter schema to `backend/src/routes/meta.route.ts`.
-
----
-
-## Environments
-
-| ID | Display name | Difficulty | Requires Box2D |
-|----|-------------|------------|----------------|
-| `CartPole-v1` | Cart Pole | easy | no |
-| `MountainCar-v0` | Mountain Car | medium | no |
-| `Acrobot-v1` | Acrobot | medium | no |
-| `LunarLander-v3` | Lunar Lander | hard | yes |
-
-Q-Learning only works on `MountainCar-v0` and `Acrobot-v1` (discrete-action + low-dimensional obs).
-
-### Adding a new environment
-
-1. Add an entry to `python/environments/registry.py`.
-2. Add the same entry to the `ENVIRONMENTS` array in `backend/src/routes/meta.route.ts`.
-
----
-
-## Session lifecycle
-
-```
-created → training → paused ↔ training → complete
-                           └──────────────→ stopped
-                                         → error
-```
-
-Max 3 concurrent active sessions (`MAX_CONCURRENT_SESSIONS` in `session-manager.service.ts`).
-
-On stop: Node sends `{ type: "stop" }` to Python stdin, then force-kills after a 5 s grace period.
-
----
-
-## Python environment
-
-The backend auto-detects the Python executable in this order:
-1. `PYTHON_EXECUTABLE` env var
-2. `.venv/Scripts/python.exe` (Windows) / `.venv/bin/python` (Unix)
-3. `venv/Scripts/python.exe` / `venv/bin/python`
-4. `python` / `python3` on PATH
-
-Always activate the venv before running `npm run dev` to ensure the correct Python is used, or set `PYTHON_EXECUTABLE` explicitly.
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `PORT` | `3000` | HTTP API port |
+| `WS_PORT` | `3001` | WebSocket port |
+| `PYTHON_EXECUTABLE` | auto-detected | Override Python binary path |
