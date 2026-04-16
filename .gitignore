@@ -34,4 +34,4 @@ Thumbs.db
 npm-debug.log*
 
 # Claude
-.claude/
+.claude/agent-memory/
